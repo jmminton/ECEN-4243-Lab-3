@@ -213,6 +213,8 @@ module decoder (input  logic [1:0] Op,
           4'b1110: ALUControl = 4'b0111; // BIC
           4'b1111: ALUControl = 4'b1000; // MVN (NOT)
           4'b1001: ALUControl = 4'b1001; // TEQ ??
+	  4'b1010: ALUControl = 4'b1011; // CMP
+          4'b1011: ALUControl = 4'b1100; // CMN
           4'b1101: ALUControl = 4'b1101; // MOV
           default: ALUControl = 4'bx;  // unimplemented
         endcase
@@ -495,11 +497,9 @@ module alu (input  logic [31:0] a, b,
       4'b1000: Result = ~a; // MVN
       4'b1001: Result = a ^ b; //TEQ
       4'b1010: Result = a & b; //TST
-      //4'b1011: Result = a << b; // LSL
-      //4'b1100: Result = a >> b; // LSR
-      //4'b1101: Result = a >>> b; // ASR
-      //4'b1110: Result = (a >> b) | (a << b); // ROR
-      4'b1111: Result = b; // MOV
+      4'b1011: Result = a - b; // CMP
+      4'b1100: Result = a + b; // CMN
+      4'b1101: Result = b; // MOV
       default: Result = 32'bx;
      endcase
 
