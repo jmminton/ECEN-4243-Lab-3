@@ -213,14 +213,8 @@ module decoder (input  logic [1:0] Op,
           4'b1110: ALUControl = 4'b0111; // BIC
           4'b1111: ALUControl = 4'b1000; // MVN (NOT)
           4'b1001: ALUControl = 4'b1001; // TEQ ??
-          4'b1101: if (Funct[5]) begin
-                      ALUControl = 4'b1101; // MOV
-                    end else begin
-                      if (Instr[6:5] == 2'b00) ALUControl = 4'b1011; // LSL 
-                      else if(Instr[6:5] == 2'b01) ALUControl = 4'b1100; // LSR
-                      else if (Instr[6:5] == 2'b10) ALUControl = 4'b1101; // ASR
-                      else if (Instr[6:5] == 2'b11) ALUControl = 4'b1110; // ROR
-          default: ALUControl = 3'bx;  // unimplemented
+          4'b1101: ALUControl = 4'b1101; // MOV
+          default: ALUControl = 4'bx;  // unimplemented
         endcase
         // update flags if S bit is set 
         // (C & V only updated for arith instructions)
@@ -474,6 +468,7 @@ endmodule // mux2
 
 module alu (input  logic [31:0] a, b,
           input  logic [ 3:0] ALUControl,
+          input  logic        c,
           output logic [31:0] Result,
           output logic [ 3:0] ALUFlags);
    
@@ -485,48 +480,39 @@ module alu (input  logic [31:0] a, b,
    
   assign condinvb = ALUControl[0] ? ~b : b;
   assign sum = a + condinvb + ALUControl[0];
+  assign testCheck = 0;
 
-  always_comb
+  always_comb  
     case (ALUControl[3:0])
       4'b0000: Result = a + b; // ADD
       4'b0001: Result = a - b; // SUB
       4'b0010: Result = a & b; // AND
       4'b0011: Result = a | b; // ORR
-      4'b0100: Result = a + b; // ADC
-      4'b0101: Result = a - c; // SBC
+      4'b0100: Result = a + b + c; // ADC
+      4'b0101: Result = a - b - ~c; // SBC
       4'b0110: Result = a ^ b; // XOR
       4'b0111: Result = a & ~b; // BIC
       4'b1000: Result = ~a; // MVN
-      4'b1001: begin // TEQ
-        testCheck = 1;
-        temp = a ^ b;
-        neg = temp[31];
-        zero = (temp == 32'b0);
-      end
-      4'b1010: begin // TST
-        testCheck = 1;
-        temp = a & b;
-        neg = temp[31];
-        zero = (temp == 32'b0);
-      end
-      4'b1011: Result = a << b; // LSL
-      4'b1100: Result = a >> b; // LSR
-      4'b1101: Result = a >>> b; // ASR
-      4'b1110: Result = (a >> b) | (a << b); // ROR
+      4'b1001: Result = a ^ b; //TEQ
+      4'b1010: Result = a & b; //TST
+      //4'b1011: Result = a << b; // LSL
+      //4'b1100: Result = a >> b; // LSR
+      //4'b1101: Result = a >>> b; // ASR
+      //4'b1110: Result = (a >> b) | (a << b); // ROR
       4'b1111: Result = b; // MOV
-      deault: Result = 32'bx;
+      default: Result = 32'bx;
      endcase
-  if (~testCheck) begin
+
     assign neg      = Result[31];
     assign zero     = (Result == 32'b0);
     assign carry    = (ALUControl[1] == 1'b0) & sum[32];
     assign overflow = (ALUControl[1] == 1'b0) & 
                       ~(a[31] ^ b[31] ^ ALUControl[0]) & 
                       (a[31] ^ sum[31]); 
-  end
 
 
-  }
+
+  //}
   assign ALUFlags = {neg, zero, carry, overflow};
    
 endmodule // alu
@@ -534,7 +520,7 @@ endmodule // alu
 module shifter (input  logic [31:0] data,
 				input  logic [11:0]  src2,
 				input  logic 		I,
-				output logic [31:0] out)
+				output logic [31:0] out);
 	
 	logic [3:0] rot;
 	logic [7:0] imm8;
@@ -547,7 +533,7 @@ module shifter (input  logic [31:0] data,
 	assign sh = src2[6:5];
 	
 	always_comb
-		if (I == 0) {
+		if (I == 0) begin
 			case(sh)
 				2'b00: out = data<<shamt5;
 				2'b01: out = data>>shamt5;
@@ -555,8 +541,7 @@ module shifter (input  logic [31:0] data,
 				2'b11: out = (data>>shamt5)|(data<<(32-shamt5));
 				default: out = 32'bx;
 			endcase
-		}
-		else {
+		end
+		else
 			out = imm8>>2*rot|(imm8<<(32-2*rot));
-		}
 endmodule //shifter
