@@ -212,7 +212,8 @@ module decoder (input  logic [1:0] Op,
           4'b0001: ALUControl = 4'b0110; // EOR (XOR)
           4'b1110: ALUControl = 4'b0111; // BIC
           4'b1111: ALUControl = 4'b1000; // MVN (NOT)
-          4'b1001: ALUControl = 4'b1001; // TEQ ??
+          4'b1001: ALUControl = 4'b1001; // TEQ
+	  4'b1000: ALUControl = 4'b1010; // TST
 	  4'b1010: ALUControl = 4'b1011; // CMP
           4'b1011: ALUControl = 4'b1100; // CMN
           4'b1101: ALUControl = 4'b1101; // MOV
@@ -505,14 +506,12 @@ module alu (input  logic [31:0] a, b,
 
     assign neg      = Result[31];
     assign zero     = (Result == 32'b0);
-    assign carry    = (ALUControl[1] == 1'b0) & sum[32];
-    assign overflow = (ALUControl[1] == 1'b0) & 
-                      ~(a[31] ^ b[31] ^ ALUControl[0]) & 
+    assign carry    = ((ALUControl[3:1] == 3'b000) || (ALUControl[3:1] == 3'b010)) & sum[32];
+    assign overflow = ((ALUControl[3:1] == 3'b000) || (ALUControl[3:1] == 3'b010)) &
+                      ~(a[31] ^ b[31] ^ ALUControl[0]) &
                       (a[31] ^ sum[31]); 
 
 
-
-  //}
   assign ALUFlags = {neg, zero, carry, overflow};
    
 endmodule // alu
