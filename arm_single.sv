@@ -83,10 +83,11 @@ module arm (input  logic        clk, reset,
             output logic        MemStrobe,
             input  logic        PCReady);
    
-   logic [3:0] ALUFlags;
-   logic       RegWrite, ALUSrc, MemtoReg, PCSrc;
-   logic [2:0] RegSrc;   
-   logic [1:0] ImmSrc, ALUControl;
+  logic [3:0] ALUFlags;
+  logic       RegWrite, ALUSrc, MemtoReg, PCSrc;
+  logic [2:0] RegSrc;   
+  logic [1:0] ImmSrc;
+  logic [3:0] ALUControl;
    
    controller c (.clk(clk),
                  .reset(reset),
@@ -121,19 +122,19 @@ module arm (input  logic        clk, reset,
 endmodule // arm
 
 module controller (input  logic         clk, reset,
-                   input  logic [31:12] Instr,
-                   input  logic [ 3:0]  ALUFlags,
-                   output logic [ 2:0]  RegSrc,
-                   output logic         RegWrite,
-                   output logic [ 1:0]  ImmSrc,
-                   output logic         ALUSrc, 
-                   output logic [ 1:0]  ALUControl,
-                   output logic         MemWrite, MemtoReg,
-                   output logic         PCSrc,
-                   output logic         MemStrobe);
+                  input  logic [31:12] Instr,
+                  input  logic [ 3:0]  ALUFlags,
+                  output logic [ 2:0]  RegSrc,
+                  output logic         RegWrite,
+                  output logic [ 1:0]  ImmSrc,
+                  output logic         ALUSrc, 
+                  output logic [ 3:0]  ALUControl,
+                  output logic         MemWrite, MemtoReg,
+                  output logic         PCSrc,
+                  output logic         MemStrobe);
    
-   logic [1:0] FlagW;
-   logic       PCS, RegW, MemW;
+  logic [1:0] FlagW;
+  logic       PCS, RegW, MemW;
    
    decoder dec (.Op(Instr[27:26]),
                 .Funct(Instr[25:20]),
@@ -167,57 +168,71 @@ module decoder (input  logic [1:0] Op,
                 output logic [1:0] FlagW,
                 output logic       PCS, RegW, MemW,
                 output logic       MemtoReg, ALUSrc,
-                output logic [1:0] ImmSrc, ALUControl,
+                output logic [1:0] ImmSrc,
+                output logic [3:0] ALUControl,
                 output logic [2:0] RegSrc,
                 output logic       MemStrobe);
    
-   logic [11:0] controls;
-   logic        Branch, ALUOp;
+  logic [11:0] controls;
+  logic        Branch, ALUOp;
 
-   // Main Decoder
-   always_comb
-     case(Op)
-       // Data processing immediate
-       2'b00: if (Funct[5]) controls = 12'b0000_0101_0010;
-       // Data processing register
-         else controls = 12'b0000_0001_0010;
-       // LDR
-       2'b01: if (Funct[0]) controls = 12'b0000_1111_0001;
-       // STR
-         else controls = 12'b0100_1110_1001;
-       // BL
-       2'b10: if (Funct[4]) controls = 12'b1011_0101_0100;
-       // B
-         else controls = 12'b0011_0100_0100;
-       // Unimplemented
-       default: controls = 12'bx;
-     endcase // case (Op)
+  // Main Decoder
+  always_comb
+    case(Op)
+      // Data processing immediate
+      2'b00: if (Funct[5]) controls = 12'b0000_0101_0010;
+      // Data processing register
+        else controls = 12'b0000_0001_0010;
+      // LDR
+      2'b01: if (Funct[0]) controls = 12'b0000_1111_0001;
+      // STR
+        else controls = 12'b0100_1110_1001;
+      // BL
+      2'b10: if (Funct[4]) controls = 12'b1011_0101_0100;
+      // B
+        else controls = 12'b0011_0100_0100;
+      // Unimplemented
+      default: controls = 12'bx;
+    endcase // case (Op)
 
-   assign {RegSrc, ImmSrc, ALUSrc, MemtoReg,
+  assign {RegSrc, ImmSrc, ALUSrc, MemtoReg,
           RegW, MemW, Branch, ALUOp, MemStrobe} = controls;
       
-   // ALU Decoder             
-   always_comb
-     if (ALUOp)
-       begin                 // which DP Instr?
-         case(Funct[4:1]) 
-           4'b0100: ALUControl = 2'b00; // ADD
-           4'b0010: ALUControl = 2'b01; // SUB
-           4'b0000: ALUControl = 2'b10; // AND
-           4'b1100: ALUControl = 2'b11; // ORR
-           default: ALUControl = 2'bx;  // unimplemented
-         endcase
-         // update flags if S bit is set 
-         // (C & V only updated for arith instructions)
-         FlagW[1]      = Funct[0]; // FlagW[1] = S-bit
-         // FlagW[0] = S-bit & (ADD | SUB)
-         FlagW[0]      = Funct[0] & (ALUControl == 2'b00 | ALUControl == 2'b01);
-       end
-     else
-       begin
-         ALUControl = 2'b00; // add for non-DP instructions
-         FlagW      = 2'b00; // don't update Flags
-       end
+  // ALU Decoder             
+  always_comb
+    if (ALUOp)
+      begin                 // which DP Instr?
+        case(Funct[4:1]) 
+          4'b0100: ALUControl = 4'b0000; // ADD
+          4'b0010: ALUControl = 4'b0001; // SUB
+          4'b0000: ALUControl = 4'b0010; // AND
+          4'b1100: ALUControl = 4'b0011; // ORR
+          4'b0101: ALUControl = 4'b0100; // ADC Check to see how carry is implemented
+          4'b0110: ALUControl = 4'b0101; // SBC Check to see how carry is implemented
+          4'b0001: ALUControl = 4'b0110; // EOR (XOR)
+          4'b1110: ALUControl = 4'b0111; // BIC
+          4'b1111: ALUControl = 4'b1000; // MVN (NOT)
+          4'b1001: ALUControl = 4'b1001; // TEQ ??
+          4'b1101: if (Funct[5]) begin
+                      ALUControl = 4'b1101; // MOV
+                    end else begin
+                      if (Instr[6:5] == 2'b00) ALUControl = 4'b1011; // LSL 
+                      else if(Instr[6:5] == 2'b01) ALUControl = 4'b1100; // LSR
+                      else if (Instr[6:5] == 2'b10) ALUControl = 4'b1101; // ASR
+                      else if (Instr[6:5] == 2'b11) ALUControl = 4'b1110; // ROR
+          default: ALUControl = 3'bx;  // unimplemented
+        endcase
+        // update flags if S bit is set 
+        // (C & V only updated for arith instructions)
+        FlagW[1]      = Funct[0]; // FlagW[1] = S-bit
+        // FlagW[0] = S-bit & (ADD | SUB)
+        FlagW[0]      = Funct[0] & (ALUControl == 4'b0000 | ALUControl == 4'b0001);
+      end
+    else
+      begin
+        ALUControl = 4'b0000; // add for non-DP instructions
+        FlagW      = 2'b00; // don't update Flags
+      end
    
    // PC Logic
    assign PCS  = ((Rd == 4'b1111) & RegW) | Branch;
@@ -231,30 +246,30 @@ module condlogic (input  logic       clk, reset,
                   input  logic       PCS, RegW, MemW,
                   output logic       PCSrc, RegWrite, MemWrite);
    
-   logic [1:0] FlagWrite;
-   logic [3:0] Flags;
-   logic       CondEx;
+  logic [1:0] FlagWrite;
+  logic [3:0] Flags;
+  logic       CondEx;
 
-   // Notice hard-coding of FFs to structurally model
-   flopenr #(2) flagreg1 (.clk(clk),
-                          .reset(reset),
+  // Notice hard-coding of FFs to structurally model
+  flopenr #(2) flagreg1 (.clk(clk),
                           .en(FlagWrite[1]),
+                          .reset(reset),
                           .d(ALUFlags[3:2]),
                           .q(Flags[3:2]));
-   flopenr #(2) flagreg0 (.clk(clk),
+  flopenr #(2) flagreg0 (.clk(clk),
                           .reset(reset),
                           .en(FlagWrite[0]),
                           .d(ALUFlags[1:0]),
                           .q(Flags[1:0]));
    
-   // write controls are conditional
-   condcheck cc (.Cond(Cond),
+  // write controls are conditional
+  condcheck cc (.Cond(Cond),
                  .Flags(Flags),
                  .CondEx(CondEx));
-   assign FlagWrite = FlagW & {2{CondEx}};
-   assign RegWrite  = RegW  & CondEx;
-   assign MemWrite  = MemW  & CondEx;
-   assign PCSrc     = PCS   & CondEx;
+  assign FlagWrite = FlagW & {2{CondEx}};
+  assign RegWrite  = RegW  & CondEx;
+  assign MemWrite  = MemW  & CondEx;
+  assign PCSrc     = PCS   & CondEx;
    
 endmodule // condlogic
 
@@ -262,90 +277,90 @@ module condcheck (input  logic [3:0] Cond,
                   input  logic [3:0] Flags,
                   output logic       CondEx);
    
-   logic neg, zero, carry, overflow, ge;
+  logic neg, zero, carry, overflow, ge;
    
-   assign {neg, zero, carry, overflow} = Flags;
-   assign ge = (neg == overflow);
+  assign {neg, zero, carry, overflow} = Flags;
+  assign ge = (neg == overflow);
    
-   always_comb
-     case(Cond)
-       4'b0000: CondEx = zero;             // EQ
-       4'b0001: CondEx = ~zero;            // NE
-       4'b0010: CondEx = carry;            // CS
-       4'b0011: CondEx = ~carry;           // CC
-       4'b0100: CondEx = neg;              // MI
-       4'b0101: CondEx = ~neg;             // PL
-       4'b0110: CondEx = overflow;         // VS
-       4'b0111: CondEx = ~overflow;        // VC
-       4'b1000: CondEx = carry & ~zero;    // HI
-       4'b1001: CondEx = ~(carry & ~zero); // LS
-       4'b1010: CondEx = ge;               // GE
-       4'b1011: CondEx = ~ge;              // LT
-       4'b1100: CondEx = ~zero & ge;       // GT
-       4'b1101: CondEx = ~(~zero & ge);    // LE
-       4'b1110: CondEx = 1'b1;             // Always
-       default: CondEx = 1'bx;             // undefined
-     endcase // case (Cond)
+  always_comb
+    case(Cond)
+      4'b0000: CondEx = zero;             // EQ
+      4'b0001: CondEx = ~zero;            // NE
+      4'b0010: CondEx = carry;            // CS
+      4'b0011: CondEx = ~carry;           // CC
+      4'b0100: CondEx = neg;              // MI
+      4'b0101: CondEx = ~neg;             // PL
+      4'b0110: CondEx = overflow;         // VS
+      4'b0111: CondEx = ~overflow;        // VC
+      4'b1000: CondEx = carry & ~zero;    // HI
+      4'b1001: CondEx = ~(carry & ~zero); // LS
+      4'b1010: CondEx = ge;               // GE
+      4'b1011: CondEx = ~ge;              // LT
+      4'b1100: CondEx = ~zero & ge;       // GT
+      4'b1101: CondEx = ~(~zero & ge);    // LE
+      4'b1110: CondEx = 1'b1;             // Always
+      default: CondEx = 1'bx;             // undefined
+    endcase // case (Cond)
    
 endmodule // condcheck
 
 module datapath (input  logic        clk, reset,
-                 input  logic [ 2:0]  RegSrc,
-                 input  logic        RegWrite,
-                 input  logic [ 1:0]  ImmSrc,
-                 input  logic        ALUSrc,
-                 input  logic [ 1:0]  ALUControl,
-                 input  logic        MemtoReg,
-                 input  logic        PCSrc,
-                 output logic [ 3:0]  ALUFlags,
-                 output logic [31:0] PC,
-                 input  logic [31:0] Instr,
-                 output logic [31:0] ALUResult, WriteData,
-                 input  logic [31:0] ReadData,
-                 input  logic        PCReady);
+                input  logic [ 2:0]  RegSrc,
+                input  logic        RegWrite,
+                input  logic [ 1:0]  ImmSrc,
+                input  logic        ALUSrc,
+                input  logic [ 3:0]  ALUControl,
+                input  logic        MemtoReg,
+                input  logic        PCSrc,
+                output logic [ 3:0]  ALUFlags,
+                output logic [31:0] PC,
+                input  logic [31:0] Instr,
+                output logic [31:0] ALUResult, WriteData,
+                input  logic [31:0] ReadData,
+                input  logic        PCReady);
    
-   logic [31:0] PCNext, PCPlus4, PCPlus8;
-   logic [31:0] ExtImm, SrcA, SrcB, Result;
-   logic [ 3:0]  RA1, RA2, RA3;
-   logic [31:0] RA4;   
-   logic [31:0] Srcbmux0;
+  logic [31:0] PCNext, PCPlus4, PCPlus8;
+  logic [31:0] ExtImm, SrcA, SrcB, Result;
+  logic [ 3:0]  RA1, RA2, RA3;
+  logic [31:0] RA4;  
+  logic [31:0] Srcbmux0;
    
    // next PC logic
-   mux2 #(32)  pcmux (.d0(PCPlus4),
+  mux2 #(32)  pcmux (.d0(PCPlus4),
                       .d1(Result),
                       .s(PCSrc),
                       .y(PCNext));
-   flopenr #(32) pcreg (.clk(clk),
+  flopenr #(32) pcreg (.clk(clk),
                         .reset(reset),
                         .en(PCReady),
                         .d(PCNext),
                         .q(PC));
-   adder #(32) pcadd1 (.a(PC),
+  adder #(32) pcadd1 (.a(PC),
                        .b(32'b100),
                        .y(PCPlus4));
-   adder #(32) pcadd2 (.a(PCPlus4),
+  adder #(32) pcadd2 (.a(PCPlus4),
                        .b(32'b100),
                        .y(PCPlus8));
 
    // register file logic
-   mux2 #(4)   ra1mux (.d0(Instr[19:16]),
+  mux2 #(4)   ra1mux (.d0(Instr[19:16]),
                        .d1(4'b1111),
                        .s(RegSrc[0]),
                        .y(RA1));
-   mux2 #(4)   ra2mux (.d0(Instr[3:0]),
+  mux2 #(4)   ra2mux (.d0(Instr[3:0]),
                        .d1(Instr[15:12]),
                        .s(RegSrc[1]),
                        .y(RA2));
-   mux2 #(4)   ra3mux (.d0(Instr[15:12]),
+  mux2 #(4)   ra3mux (.d0(Instr[15:12]),
                        .d1(4'hE),
                        .s(RegSrc[2]),
                        .y(RA3));
-   mux2 #(32)  ra4mux (.d0(Result),
+  mux2 #(32)  ra4mux (.d0(Result),
                        .d1(PCPlus4),
                        .s(RegSrc[2]),
                        .y(RA4));
    
-   regfile     rf (.clk(clk),
+  regfile     rf (.clk(clk),
                    .we3(RegWrite),
                    .ra1(RA1),
                    .ra2(RA2),
@@ -354,29 +369,29 @@ module datapath (input  logic        clk, reset,
                    .r15(PCPlus8),
                    .rd1(SrcA),
                    .rd2(WriteData)); 
-   mux2 #(32)  resmux (.d0(ALUResult),
+  mux2 #(32)  resmux (.d0(ALUResult),
                        .d1(ReadData),
                        .s(MemtoReg),
                        .y(Result));
-   extend      ext (.Instr(Instr[23:0]),
+  extend      ext (.Instr(Instr[23:0]),
                     .ImmSrc(ImmSrc),
                     .ExtImm(ExtImm));
 
    // ALU logic
-   mux2 #(32)  srcbmux (.d0(Srcbmux0),
+  mux2 #(32)  srcbmux (.d0(WriteData),
                         .d1(ExtImm),
                         .s(ALUSrc),
                         .y(SrcB));
-   alu         alu (.a(SrcA),
+  alu         alu (.a(SrcA),
                     .b(SrcB),
                     .ALUControl(ALUControl),
                     .Result(ALUResult),
                     .ALUFlags(ALUFlags));
-	//Shifter
-	shifter 	shift (.data(WriteData),
-					   .src2(Instr[11:0]),
-					   .I(Instr[25]),
-					   .out(Srcbmux0));
+       //Shifter
+	    shifter 	shift (.data(WriteData),
+					                          .src2(Instr[11:0]),
+					                          .I(Instr[25]),
+					                          .out(Srcbmux0));
 endmodule // datapath
 
 module regfile (input  logic        clk, 
@@ -385,18 +400,18 @@ module regfile (input  logic        clk,
                 input  logic [31:0] wd3, r15,
                 output logic [31:0] rd1, rd2);
    
-   logic [31:0] rf[14:0];
+  logic [31:0] rf[14:0];
    
    // three ported register file
    // read two ports combinationally
    // write third port on rising edge of clock
    // register 15 reads PC+8 instead
    
-   always_ff @(posedge clk)
-     if (we3) rf[wa3] <= wd3;   
+  always_ff @(posedge clk)
+    if (we3) rf[wa3] <= wd3;   
 
-   assign rd1 = (ra1 == 4'b1111) ? r15 : rf[ra1];
-   assign rd2 = (ra2 == 4'b1111) ? r15 : rf[ra2];
+  assign rd1 = (ra1 == 4'b1111) ? r15 : rf[ra1];
+  assign rd2 = (ra2 == 4'b1111) ? r15 : rf[ra2];
    
 endmodule // regfile
 
@@ -404,86 +419,115 @@ module extend (input  logic [23:0] Instr,
                input  logic [ 1:0] ImmSrc,
                output logic [31:0] ExtImm);
    
-   always_comb
-     case(ImmSrc) 
-       // 8-bit unsigned immediate
-       2'b00:   ExtImm = {24'b0, Instr[7:0]};  
-       // 12-bit unsigned immediate 
-       2'b01:   ExtImm = {20'b0, Instr[11:0]}; 
-       // 24-bit two's complement shifted branch 
-       2'b10:   ExtImm = {{6{Instr[23]}}, Instr[23:0], 2'b00}; 
-       default: ExtImm = 32'bx; // undefined
-     endcase // case (ImmSrc)
+  always_comb
+    case(ImmSrc) 
+      // 8-bit unsigned immediate
+      2'b00:   ExtImm = {24'b0, Instr[7:0]};  
+      // 12-bit unsigned immediate 
+      2'b01:   ExtImm = {20'b0, Instr[11:0]}; 
+      // 24-bit two's complement shifted branch 
+      2'b10:   ExtImm = {{6{Instr[23]}}, Instr[23:0], 2'b00}; 
+      default: ExtImm = 32'bx; // undefined
+    endcase // case (ImmSrc)
    
 endmodule // extend
 
 module adder #(parameter WIDTH=8)
-   (input  logic [WIDTH-1:0] a, b,
+  (input  logic [WIDTH-1:0] a, b,
     output logic [WIDTH-1:0] y);
    
-   assign y = a + b;
+  assign y = a + b;
    
 endmodule // adder
 
 module flopenr #(parameter WIDTH = 8)
-   (input  logic             clk, reset, en,
+  (input  logic             clk, reset, en,
     input  logic [WIDTH-1:0] d, 
     output logic [WIDTH-1:0] q);
 
-   always_ff @(posedge clk, posedge reset)
-     if (reset)   q <= 0;
-     else if (en) q <= d;
+  always_ff @(posedge clk, posedge reset)
+    if (reset)   q <= 0;
+    else if (en) q <= d;
    
 endmodule // flopenr
 
 module flopr #(parameter WIDTH = 8)
-   (input  logic             clk, reset,
+  (input  logic             clk, reset,
     input  logic [WIDTH-1:0] d, 
     output logic [WIDTH-1:0] q);
 
-   // Reset has start of .text
-   always_ff @(posedge clk, posedge reset)
-     if (reset) q <= 0;
-     else       q <= d;
+  // Reset has start of .text
+  always_ff @(posedge clk, posedge reset)
+    if (reset) q <= 0;
+    else       q <= d;
    
 endmodule // flopr
 
 module mux2 #(parameter WIDTH = 8)
-   (input  logic [WIDTH-1:0] d0, d1, 
+  (input  logic [WIDTH-1:0] d0, d1, 
     input  logic             s, 
     output logic [WIDTH-1:0] y);
 
-   assign y = s ? d1 : d0;
+  assign y = s ? d1 : d0;
    
 endmodule // mux2
 
 module alu (input  logic [31:0] a, b,
-            input  logic [ 1:0] ALUControl,
-            output logic [31:0] Result,
-            output logic [ 3:0] ALUFlags);
+          input  logic [ 3:0] ALUControl,
+          output logic [31:0] Result,
+          output logic [ 3:0] ALUFlags);
    
-   logic        neg, zero, carry, overflow;
-   logic [31:0] condinvb;
-   logic [32:0] sum;
+  logic        neg, zero, carry, overflow;
+  logic testCheck;
+  logic [31:0] temp;
+  logic [31:0] condinvb;
+  logic [32:0] sum;
    
-   assign condinvb = ALUControl[0] ? ~b : b;
-   assign sum = a + condinvb + ALUControl[0];
+  assign condinvb = ALUControl[0] ? ~b : b;
+  assign sum = a + condinvb + ALUControl[0];
 
-   always_comb
-     casex (ALUControl[1:0])
-       2'b0?:  Result = sum;
-       2'b10:  Result = a & b;
-       2'b11:  Result = a | b;
-       default: Result = 32'bx;
+  always_comb
+    case (ALUControl[3:0])
+      4'b0000: Result = a + b; // ADD
+      4'b0001: Result = a - b; // SUB
+      4'b0010: Result = a & b; // AND
+      4'b0011: Result = a | b; // ORR
+      4'b0100: Result = a + b; // ADC
+      4'b0101: Result = a - c; // SBC
+      4'b0110: Result = a ^ b; // XOR
+      4'b0111: Result = a & ~b; // BIC
+      4'b1000: Result = ~a; // MVN
+      4'b1001: begin // TEQ
+        testCheck = 1;
+        temp = a ^ b;
+        neg = temp[31];
+        zero = (temp == 32'b0);
+      end
+      4'b1010: begin // TST
+        testCheck = 1;
+        temp = a & b;
+        neg = temp[31];
+        zero = (temp == 32'b0);
+      end
+      4'b1011: Result = a << b; // LSL
+      4'b1100: Result = a >> b; // LSR
+      4'b1101: Result = a >>> b; // ASR
+      4'b1110: Result = (a >> b) | (a << b); // ROR
+      4'b1111: Result = b; // MOV
+      deault: Result = 32'bx;
      endcase
+  if (~testCheck) begin
+    assign neg      = Result[31];
+    assign zero     = (Result == 32'b0);
+    assign carry    = (ALUControl[1] == 1'b0) & sum[32];
+    assign overflow = (ALUControl[1] == 1'b0) & 
+                      ~(a[31] ^ b[31] ^ ALUControl[0]) & 
+                      (a[31] ^ sum[31]); 
+  end
 
-   assign neg      = Result[31];
-   assign zero     = (Result == 32'b0);
-   assign carry    = (ALUControl[1] == 1'b0) & sum[32];
-   assign overflow = (ALUControl[1] == 1'b0) & 
-                     ~(a[31] ^ b[31] ^ ALUControl[0]) & 
-                     (a[31] ^ sum[31]); 
-   assign ALUFlags = {neg, zero, carry, overflow};
+
+  }
+  assign ALUFlags = {neg, zero, carry, overflow};
    
 endmodule // alu
 
